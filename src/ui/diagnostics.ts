@@ -107,10 +107,10 @@ export async function handleEvfeventLines(connection: IBMi, lines: string[], evf
   const config = connection.getConfig();
   const errorsByFiles = parseErrors(lines);
 
-  const diagnostics: vscode.Diagnostic[] = [];
   if (errorsByFiles.size) {
     for (const [file, errors] of errorsByFiles) {
       if (file !== '.') {
+        const diagnostics: vscode.Diagnostic[] = [];
         for (const error of errors) {
           error.column = Math.max(error.column - 1, 0);
           error.lineNum = Math.max(error.lineNum - 1, 0);
@@ -129,68 +129,64 @@ export async function handleEvfeventLines(connection: IBMi, lines: string[], evf
 
           diagnostic.code = error.code;
 
-          if (config) {
-            if (!config.hideCompileErrors.includes(error.code)) {
-              diagnostics.push(diagnostic);
-            }
-          } else {
+          if (!config.hideCompileErrors.includes(error.code)) {
             diagnostics.push(diagnostic);
           }
         }
-      }
 
-      if (evfeventInfo.workspace) {
-        const workspaceFolder = evfeventInfo.workspace;
-        const storage = instance.getStorage();
+        if (evfeventInfo.workspace) {
+          const workspaceFolder = evfeventInfo.workspace;
+          const storage = instance.getStorage();
 
-        if (workspaceFolder && storage) {
-          const workspaceDeployPath = storage.getWorkspaceDeployPath(workspaceFolder.uri.fsPath);
-          const deployPathIndex = file.toLowerCase().indexOf(workspaceDeployPath.toLowerCase());
+          if (workspaceFolder && storage) {
+            const workspaceDeployPath = storage.getWorkspaceDeployPath(workspaceFolder.uri.fsPath);
+            const deployPathIndex = file.toLowerCase().indexOf(workspaceDeployPath.toLowerCase());
 
-          let relativeCompilePath = (deployPathIndex !== -1 ? file.substring(0, deployPathIndex) + file.substring(deployPathIndex + workspaceDeployPath.length) : undefined);
+            let relativeCompilePath = (deployPathIndex !== -1 ? file.substring(0, deployPathIndex) + file.substring(deployPathIndex + workspaceDeployPath.length) : undefined);
 
-          if (relativeCompilePath) {
-            if (evfeventInfo.asp) {
-              // Believe it or not, sometimes if the deploy directory is symlinked into an ASP, this can be a problem              
-              const aspRoot = `/${evfeventInfo.asp}`;
-              if (relativeCompilePath.startsWith(aspRoot)) {
-                relativeCompilePath = relativeCompilePath.substring(aspRoot.length);
-                break;
+            if (relativeCompilePath) {
+              if (evfeventInfo.asp) {
+                // Believe it or not, sometimes if the deploy directory is symlinked into an ASP, this can be a problem              
+                const aspRoot = `/${evfeventInfo.asp}`;
+                if (relativeCompilePath.startsWith(aspRoot)) {
+                  relativeCompilePath = relativeCompilePath.substring(aspRoot.length);
+                  break;
+                }
               }
+
+              const diagnosticTargetFile = vscode.Uri.joinPath(workspaceFolder.uri, relativeCompilePath);
+              if (diagnosticTargetFile !== undefined) {
+                ileDiagnostics.set(diagnosticTargetFile, diagnostics);
+              } else {
+                vscode.window.showWarningMessage("Couldn't show compile error(s) in problem view.");
+              }
+              continue;
             }
 
-            const diagnosticTargetFile = vscode.Uri.joinPath(workspaceFolder.uri, relativeCompilePath);
-            if (diagnosticTargetFile !== undefined) {
-              ileDiagnostics.set(diagnosticTargetFile, diagnostics);
-            } else {
-              vscode.window.showWarningMessage("Couldn't show compile error(s) in problem view.");
-            }
+          }
+        }
+
+        // For member paths: try to find an open local document by name before falling back to server URI.
+        // findExistingDocumentByName searches all open tabs — no workspace needed — so this works for
+        // member-type actions too (where evfeventInfo.workspace is not set).
+        if (!file.startsWith(`/`) && evfeventInfo.extension) {
+          const baseName = file.split(`/`).pop();
+          const lookupName = `${baseName}.${evfeventInfo.extension}`;
+          const openFile = VscodeTools.findExistingDocumentByName(lookupName);
+          if (openFile) {
+            ileDiagnostics.set(openFile, diagnostics);
             continue;
           }
-
         }
-      }
 
-      // For member paths: try to find an open local document by name before falling back to server URI.
-      // findExistingDocumentByName searches all open tabs — no workspace needed — so this works for
-      // member-type actions too (where evfeventInfo.workspace is not set).
-      if (!file.startsWith(`/`) && evfeventInfo.extension) {
-        const baseName = file.split(`/`).pop();
-        const lookupName = `${baseName}.${evfeventInfo.extension}`;
-        const openFile = VscodeTools.findExistingDocumentByName(lookupName);
-        if (openFile) {
-          ileDiagnostics.set(openFile, diagnostics);
-          continue;
+        if (file.startsWith(`/`)) {
+          ileDiagnostics.set(VscodeTools.findExistingDocumentUri(vscode.Uri.from({ scheme: `streamfile`, path: file })), diagnostics);
         }
-      }
-
-      if (file.startsWith(`/`)) {
-        ileDiagnostics.set(VscodeTools.findExistingDocumentUri(vscode.Uri.from({ scheme: `streamfile`, path: file })), diagnostics);
-      }
-      else {
-        const asp = await connection.getLibraryIAsp(file.split('/')[0]);
-        const memberUri = VscodeTools.findExistingDocumentUri(vscode.Uri.from({ scheme: `member`, path: `/${asp ? `${asp}/` : ''}${file}${evfeventInfo.extension ? `.` + evfeventInfo.extension : ``}` }));
-        ileDiagnostics.set(memberUri, diagnostics);
+        else {
+          const asp = await connection.getLibraryIAsp(file.split('/')[0]);
+          const memberUri = VscodeTools.findExistingDocumentUri(vscode.Uri.from({ scheme: `member`, path: `/${asp ? `${asp}/` : ''}${file}${evfeventInfo.extension ? `.` + evfeventInfo.extension : ``}` }));
+          ileDiagnostics.set(memberUri, diagnostics);
+        }
       }
     }
   } else {
