@@ -437,14 +437,12 @@
 					"enum": [
 						"usage",
 						"name",
-						"config",
-						"actionsFile"
+						"config"
 					],
 					"enumDescriptions": [
 						"Sort actions by most recently used",
 						"Sort actions alphabetically by name",
-						"Only show actions defined in the general configuration, in the order they are written",
-						"Only show actions defined in actions.json, in the order they are written"
+						"Sort actions in the order they are defined in the configuration, regardless of their origin"
 					],
 					"description": "Determine how actions should be sorted in the action selection menu"
 				},

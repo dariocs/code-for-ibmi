@@ -645,8 +645,7 @@ export async function runAction(instance: Instance, uris: vscode.Uri | vscode.Ur
 export type AvailableAction = { label: string; action: Action; }
 
 export async function getAllAvailableActions(targets: ActionTarget[], scheme: string) {
-  const configActions = await ActionTools.getActions();
-  const actionsFileActions: Action[] = [];
+  const allActions = [...await ActionTools.getActions()];
 
   // Then, if we're being called from a local file
   // we fetch the Actions defined from the workspace.
@@ -658,11 +657,10 @@ export async function getAllAvailableActions(targets: ActionTarget[], scheme: st
     const allTargetsInOne = targets.every(t => t.workspaceFolder?.index === workspaceId);
 
     if (allTargetsInOne) {
-      actionsFileActions.push(...await ActionTools.getActions(firstWorkspace));
+      const localActions = await ActionTools.getActions(firstWorkspace);
+      allActions.push(...localActions);
     }
   }
-
-  const allActions = [...configActions, ...actionsFileActions];
 
   // We make sure all extensions are uppercase
   allActions.forEach(action => {
@@ -671,42 +669,24 @@ export async function getAllAvailableActions(targets: ActionTarget[], scheme: st
     };
   });
 
-  const matchesContext = (action: Action) => action.type === scheme
-    && (!action.extensions || action.extensions.every(e => !e) || targets.every(t => action.extensions!.includes(t.extension) ||
-     action.extensions!.includes(t.fragment)) || action.extensions.includes(`GLOBAL`))
-    && (action.runOnProtected || !targets.some(t => t.protected));
-
   // Get the sort preference from settings
   const sortBy = IBMi.connectionManager.get<string>(`sortActionsBy`) || `usage`;
 
-  let sortedActions: Action[];
-  if (sortBy === `config`) {
-    // Only show actions defined in the general configuration, in the order they're written
-    sortedActions = configActions.filter(matchesContext);
-  } else if (sortBy === `actionsFile`) {
-    if (actionsFileActions.length) {
-      // Only show actions defined in actions.json, in the order they're written
-      sortedActions = actionsFileActions.filter(matchesContext);
-    } else {
-      // No actions.json found (or it's empty): fall back to the actions from the general configuration
-      vscode.window.showWarningMessage(l10n.t(`"actionsFile" sort order is configured, but no actions were found in actions.json. Showing actions from the general configuration instead.`));
-      sortedActions = configActions.filter(matchesContext);
-    }
-  } else {
-    sortedActions = allActions.filter(matchesContext)
-      .sort((a, b) => {
-        if (sortBy === `name`) {
-          // Sort alphabetically by name
-          return a.name.localeCompare(b.name);
-        } else {
-          // Sort by most recently used (default behavior)
-          return (actionUsed.get(b.name) || 0) - (actionUsed.get(a.name) || 0);
-        }
-      });
+  // Then we get all the available Actions for the current context
+  const contextActions = allActions.filter(action => action.type === scheme)
+    .filter(action => !action.extensions || action.extensions.every(e => !e) || targets.every(t => action.extensions!.includes(t.extension) || action.extensions!.includes(t.fragment)) || action.extensions.includes(`GLOBAL`))
+    .filter(action => action.runOnProtected || !targets.some(t => t.protected));
+
+  if (sortBy === `name`) {
+    // Sort alphabetically by name
+    contextActions.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sortBy !== `config`) {
+    // Sort by most recently used (default behavior).
+    // `config` keeps actions in the order they are defined, regardless of their origin.
+    contextActions.sort((a, b) => (actionUsed.get(b.name) || 0) - (actionUsed.get(a.name) || 0));
   }
 
-  // Then we get all the available Actions for the current context
-  const availableActions: AvailableAction[] = sortedActions.map(action => ({
+  const availableActions: AvailableAction[] = contextActions.map(action => ({
     label: action.name,
     action
   }));
