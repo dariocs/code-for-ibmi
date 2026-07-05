@@ -436,11 +436,13 @@
 					"default": "usage",
 					"enum": [
 						"usage",
-						"name"
+						"name",
+						"config"
 					],
 					"enumDescriptions": [
 						"Sort actions by most recently used",
-						"Sort actions alphabetically by name"
+						"Sort actions alphabetically by name",
+						"Sort actions in the order they are defined in the configuration, regardless of their origin"
 					],
 					"description": "Determine how actions should be sorted in the action selection menu"
 				},
