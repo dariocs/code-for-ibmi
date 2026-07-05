@@ -670,7 +670,7 @@ export async function getAllAvailableActions(targets: ActionTarget[], scheme: st
   });
 
   // Get the sort preference from settings
-  const sortBy = IBMi.connectionManager.get<string>(`sortActionsBy`) || `usage`;
+  const sortBy = IBMi.connectionManager.get<'name'|'usage'|'config'>(`sortActionsBy`) || `usage`;
 
   // Then we get all the available Actions for the current context
   const contextActions = allActions.filter(action => action.type === scheme)
@@ -680,7 +680,7 @@ export async function getAllAvailableActions(targets: ActionTarget[], scheme: st
   if (sortBy === `name`) {
     // Sort alphabetically by name
     contextActions.sort((a, b) => a.name.localeCompare(b.name));
-  } else if (sortBy !== `config`) {
+  } else if (sortBy === `usage`) {
     // Sort by most recently used (default behavior).
     // `config` keeps actions in the order they are defined, regardless of their origin.
     contextActions.sort((a, b) => (actionUsed.get(b.name) || 0) - (actionUsed.get(a.name) || 0));
